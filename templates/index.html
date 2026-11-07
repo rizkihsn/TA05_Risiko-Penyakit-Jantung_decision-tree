@@ -1,0 +1,408 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CardioTree - Klasifikasi risiko penyakit jantung</title>
+<meta name="description" content="Perkirakan risiko penyakit jantung dari 11 data klinis dengan model Decision Tree, lengkap dengan alur keputusannya.">
+<style>
+  :root{
+    --paper:#FFF8F7; --sheet:#FFFFFF;
+    --grid-minor:#FAE6E3; --grid-major:#F2C9C4;
+    --ink:#1E1B33; --muted:#675F6E; --line:#E8DCDD;
+    --red:#CF1B2E; --red-text:#B3121F; --red-soft:#FDECEE;
+    --teal:#0D7F76; --teal-text:#0A6760; --teal-soft:#E3F4F1;
+    --focus:#3B4CCA;
+    --serif:"Charter","Bitstream Charter","Iowan Old Style","Palatino Linotype",Georgia,serif;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.55 var(--sans);-webkit-text-size-adjust:100%}
+  :focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+  button,input,select{font:inherit;color:inherit}
+  .wrap{max-width:1160px;margin:0 auto;padding:0 20px}
+
+  /* Header */
+  .top{display:flex;align-items:center;gap:10px;padding:16px 0}
+  .brand{display:flex;align-items:center;gap:10px;font:700 1.25rem/1 var(--serif);letter-spacing:.01em}
+  .brand svg{display:block}
+
+  /* Hero: kertas EKG (kotak kecil 1 mm = 10 px, kotak besar 5 mm = 50 px) */
+  .hero{position:relative;border-top:1px solid var(--grid-major);border-bottom:1px solid var(--grid-major);
+    background-color:var(--paper);
+    background-image:
+      linear-gradient(var(--grid-major) 1px,transparent 1px),
+      linear-gradient(90deg,var(--grid-major) 1px,transparent 1px),
+      linear-gradient(var(--grid-minor) 1px,transparent 1px),
+      linear-gradient(90deg,var(--grid-minor) 1px,transparent 1px);
+    background-size:50px 50px,50px 50px,10px 10px,10px 10px;overflow:hidden}
+  .hero .wrap{position:relative;padding-top:44px;padding-bottom:104px}
+  .hero h1{font:700 clamp(1.8rem,4.2vw,2.9rem)/1.12 var(--serif);letter-spacing:-.01em;margin:0 0 14px;max-width:21ch}
+  .hero p{margin:0 0 22px;max-width:52ch;font-size:1.05rem;color:#3F3A52}
+  .hero-trace{position:absolute;left:0;right:0;bottom:6px;width:100%;height:74px;pointer-events:none}
+  .hero-trace path{fill:none;stroke:var(--red);stroke-width:2.2;stroke-linejoin:round;stroke-linecap:round}
+  .hero-trace .base{opacity:.28}
+  .hero-trace .pulse{stroke-width:2.8;stroke-dasharray:.3 2;stroke-dashoffset:.3;animation:sweep 3.6s linear infinite}
+  .try{display:flex;flex-wrap:wrap;gap:10px;align-items:center;position:relative;z-index:1}
+  .try span{font-size:.92rem;color:var(--muted)}
+
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:1.5px solid var(--ink);background:var(--sheet);
+    color:var(--ink);border-radius:8px;padding:9px 16px;font-weight:600;cursor:pointer;min-height:44px}
+  .btn:hover{background:var(--ink);color:#fff}
+  .btn.primary{background:var(--red);border-color:var(--red);color:#fff}
+  .btn.primary:hover{background:#A8101F;border-color:#A8101F}
+  .btn.primary[disabled]{opacity:.7;cursor:progress}
+  .btn.quiet{border-color:var(--line);font-weight:500}
+  .linkbtn{background:none;border:0;padding:4px 0;color:var(--red-text);text-decoration:underline;text-underline-offset:3px;cursor:pointer;font-size:.88rem}
+
+  /* Layout */
+  .layout{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,.8fr);gap:32px;padding:32px 0 24px;align-items:start}
+  @media(max-width:920px){.layout{grid-template-columns:1fr}}
+
+  .sheet{background:var(--sheet);border:1px solid var(--line);border-radius:10px;padding:8px 28px 28px}
+  @media(max-width:520px){.sheet{padding:4px 18px 22px}}
+  fieldset{border:0;margin:0;padding:22px 0 20px;min-width:0}
+  fieldset+fieldset{border-top:1px solid var(--line)}
+  legend{padding:0;font:700 1.18rem/1.3 var(--serif);float:left;width:100%}
+  legend+*{clear:both}
+  .gdesc{margin:2px 0 16px;color:var(--muted);font-size:.92rem}
+  .fields{display:grid;grid-template-columns:1fr 1fr;gap:18px 20px}
+  @media(max-width:560px){.fields{grid-template-columns:1fr}}
+  .field{min-width:0}
+  .field.full{grid-column:1/-1}
+  .field>label,.lbl{display:block;font-weight:600;font-size:.93rem;margin-bottom:6px}
+  .inputwrap{position:relative}
+  input[type=number],input[type=text],select{width:100%;min-height:46px;padding:9px 12px;border:1.5px solid #CFC3C6;border-radius:8px;background:#fff}
+  input.hasunit{padding-right:62px}
+  .unit{position:absolute;right:12px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:.85rem;pointer-events:none}
+  select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%23675F6E' stroke-width='1.8'/%3E%3C/svg%3E");
+    background-repeat:no-repeat;background-position:right 14px center;padding-right:38px}
+  small.hint{display:block;margin-top:5px;color:var(--muted);font-size:.82rem}
+  .field.invalid input,.field.invalid select{border-color:var(--red);background:var(--red-soft)}
+  .field.invalid .seg{border-color:var(--red)}
+
+  /* Segmented radio */
+  .seg{display:flex;border:1.5px solid #CFC3C6;border-radius:8px;overflow:hidden;background:#fff}
+  .seg label{flex:1;position:relative;margin:0;font-weight:500}
+  .seg label+label{border-left:1.5px solid #CFC3C6}
+  .seg input{position:absolute;opacity:0;inset:0;width:100%;height:100%;margin:0;cursor:pointer}
+  .seg span{display:flex;align-items:center;justify-content:center;text-align:center;min-height:44px;padding:8px 10px;font-size:.95rem;line-height:1.25}
+  .seg input:checked+span{background:var(--ink);color:#fff;font-weight:600}
+  .seg input:focus-visible+span{outline:3px solid var(--focus);outline-offset:-3px}
+  .seg label:hover input:not(:checked)+span{background:#F6EFF0}
+
+  /* Pratinjau segmen ST */
+  .stpreview{margin:20px 0 0;border:1px solid var(--line);border-radius:8px;padding:12px 14px;background:
+    linear-gradient(var(--grid-minor) 1px,transparent 1px) 0 0/10px 10px,
+    linear-gradient(90deg,var(--grid-minor) 1px,transparent 1px) 0 0/10px 10px,#fff}
+  .stpreview svg{display:block;width:100%;height:auto;max-height:120px}
+  .stpreview path.beat{fill:none;stroke:var(--ink);stroke-width:2.2;stroke-linejoin:round;stroke-linecap:round}
+  .stpreview path.base{fill:none;stroke:#D9C5C8;stroke-width:1.2;stroke-dasharray:4 4}
+  .stpreview path.st{fill:none;stroke:var(--red);stroke-width:3.4;stroke-linecap:round}
+  .stpreview figcaption{margin-top:6px;font-size:.85rem;color:var(--muted)}
+
+  .actions{display:flex;flex-wrap:wrap;gap:12px;align-items:center;padding-top:22px;border-top:1px solid var(--line)}
+  .actions .primary{flex:1 1 220px;font-size:1.05rem}
+
+  .errbox{margin:20px 0 0;padding:14px 16px;border:1.5px solid var(--red);background:var(--red-soft);border-radius:8px}
+  .errbox strong{display:block;margin-bottom:4px;color:var(--red-text)}
+  .errbox ul{margin:0;padding-left:20px}
+  .errbox a{color:var(--ink)}
+
+  /* Panel hasil */
+  .panel{position:sticky;top:18px;background:var(--sheet);border:1px solid var(--line);border-radius:10px;overflow:hidden;outline:none}
+  @media(max-width:920px){.panel{position:static}}
+  .panel .body{padding:20px 24px 24px}
+  .strip{height:74px;border-bottom:1px solid var(--line);background:
+    linear-gradient(var(--grid-minor) 1px,transparent 1px) 0 0/10px 10px,
+    linear-gradient(90deg,var(--grid-minor) 1px,transparent 1px) 0 0/10px 10px,#fff}
+  .strip svg{display:block;width:100%;height:100%}
+  .strip path{fill:none;stroke-width:2.4;stroke-linejoin:round;stroke-linecap:round;stroke-dasharray:1;stroke-dashoffset:1;animation:draw 1.6s ease-out forwards}
+  .pos .strip path{stroke:var(--red)} .neg .strip path{stroke:var(--teal)}
+  .panel h2{font:700 1.45rem/1.25 var(--serif);margin:0 0 12px}
+  .pos h2{color:var(--red-text)} .neg h2{color:var(--teal-text)}
+  .prob{display:flex;align-items:baseline;gap:6px;flex-wrap:wrap}
+  .prob .num{font:700 3.2rem/1 var(--serif);font-variant-numeric:tabular-nums}
+  .prob .pc{font:700 1.5rem/1 var(--serif)}
+  .prob .cap{flex-basis:100%;color:var(--muted);font-size:.92rem;margin-top:2px}
+  .meter{height:10px;border-radius:5px;background:#EFE6E7;margin:12px 0 6px;overflow:hidden}
+  .meter span{display:block;height:100%;border-radius:5px;background:var(--red)}
+  .neg .meter span{background:var(--teal)}
+  .alt{margin:0 0 4px;color:var(--muted);font-size:.9rem}
+  .panel h3{font:700 1.05rem/1.3 var(--serif);margin:22px 0 4px}
+  .panel .sub{margin:0 0 12px;color:var(--muted);font-size:.88rem}
+
+  /* Rel keputusan: urutan akar -> daun */
+  ol.rail{list-style:none;margin:0;padding:0}
+  ol.rail li{position:relative;padding:0 0 14px 28px}
+  ol.rail li::before{content:"";position:absolute;left:6px;top:20px;bottom:-2px;width:2px;background:#E1D3D6}
+  ol.rail li:last-child::before{display:none}
+  ol.rail li::after{content:"";position:absolute;left:0;top:5px;width:14px;height:14px;border-radius:50%;background:#fff;border:3px solid var(--ink)}
+  ol.rail li.leaf::after{background:var(--red);border-color:var(--red)}
+  .neg ol.rail li.leaf::after{background:var(--teal);border-color:var(--teal)}
+  ol.rail strong{display:block;font-weight:600;line-height:1.35}
+  ol.rail em{font-style:normal;color:var(--muted);font-size:.86rem}
+  .note{margin:6px 0 0;padding:10px 12px;border-radius:8px;background:#F7F2F2;color:#463F52;font-size:.86rem}
+  .note+.note{margin-top:8px}
+
+  .empty{padding:24px}
+  .empty h2{font:700 1.25rem/1.3 var(--serif);margin:0 0 8px}
+  .empty p{margin:0 0 10px;color:#3F3A52}
+  .empty ul{margin:0;padding-left:20px;color:#3F3A52}
+  .empty li{margin-bottom:6px}
+
+  .about{border-top:1px solid var(--line);margin-top:8px;padding:24px 0 48px;color:#4A4458;font-size:.92rem}
+  .about p{margin:0 0 10px;max-width:78ch}
+  .about a{color:var(--red-text)}
+
+  @keyframes draw{to{stroke-dashoffset:0}}
+  @keyframes sweep{to{stroke-dashoffset:-1}}
+  @media(prefers-reduced-motion:reduce){
+    html{scroll-behavior:auto}
+    .hero-trace .base{opacity:1}
+    .hero-trace .pulse{display:none}
+    .strip path{animation:none;stroke-dashoffset:0}
+  }
+</style>
+</head>
+<body>
+{# ---------- Pola satu detak EKG, dipakai ulang ---------- #}
+{% set beat = "h18 q4 -8 8 0 h12 l3 4 l5 -26 l5 32 l3 -10 h18 q8 -12 16 0 h26" %}
+{% set beat_st = "h18 q4 -8 8 0 h12 l3 4 l5 -26 l5 32 l3 -4 l16 7 q6 -7 14 -1 l5 -12 h22" %}
+
+<div class="wrap">
+  <header class="top">
+    <a class="brand" href="/" style="color:inherit;text-decoration:none" aria-label="CardioTree, halaman utama">
+      <svg width="34" height="24" viewBox="0 0 34 24" aria-hidden="true"><path d="M0 14h8l3-9 5 17 4-13 2 5h12" fill="none" stroke="#CF1B2E" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      CardioTree
+    </a>
+  </header>
+</div>
+
+<section class="hero">
+  <div class="wrap">
+    <h1>Perkirakan risiko penyakit jantung dari data klinis pasien</h1>
+    <p>Isi 11 data pemeriksaan. Model Decision Tree memberi hasilnya beserta aturan yang dilalui, jadi alasannya bisa dibaca.</p>
+    <div class="try">
+      <button type="button" class="btn" data-sample="risk">Coba prediksi risiko</button>
+    </div>
+  </div>
+  <svg class="hero-trace" viewBox="0 0 1200 74" preserveAspectRatio="none" aria-hidden="true">
+    <path class="base" d="M0 44 {% for i in range(10) %}{{ beat }} {% endfor %}h80"/>
+    <path class="pulse" pathLength="1" d="M0 44 {% for i in range(10) %}{{ beat }} {% endfor %}h80"/>
+  </svg>
+</section>
+
+<main class="wrap layout">
+  <form id="form" class="sheet" method="post" action="/#hasil" autocomplete="off">
+    {% if errors %}
+    <div class="errbox" role="alert">
+      <strong>Isian belum lengkap</strong>
+      <ul>{% for e in errors %}<li><a href="#{{ e.field }}">{{ e.msg }}</a></li>{% endfor %}</ul>
+    </div>
+    {% endif %}
+
+    {% for sec in sections %}
+    <fieldset>
+      <legend>{{ sec.title }}</legend>
+      <p class="gdesc">{{ sec.desc }}</p>
+      <div class="fields">
+        {% for name in sec.fields %}{% set cfg = fields[name] %}
+        <div class="field{{ ' invalid' if name in errfields }}{{ ' full' if cfg.kind == 'choice' and (cfg.options|length > 3 or cfg.wide) }}">
+          {% if cfg.kind == 'number' %}
+            <label for="{{ name }}">{{ cfg.label }}</label>
+            <div class="inputwrap">
+              {% if cfg.step == 1 %}
+              <input id="{{ name }}" name="{{ name }}" type="number" inputmode="numeric" min="{{ cfg.min }}" max="{{ cfg.max }}" step="1"
+                     placeholder="{{ cfg.placeholder }}" required class="{{ 'hasunit' if cfg.unit }}" value="{{ values.get(name, '') }}">
+              {% else %}
+              <input id="{{ name }}" name="{{ name }}" type="text" inputmode="decimal" pattern="-?[0-9]+([.,][0-9]+)?"
+                     title="Isi dengan angka, boleh memakai koma, contoh 1,5" placeholder="{{ cfg.placeholder }}" required value="{{ values.get(name, '') }}">
+              {% endif %}
+              {% if cfg.unit %}<span class="unit">{{ cfg.unit }}</span>{% endif %}
+            </div>
+            {% if cfg.hint %}<small class="hint">{{ cfg.hint }}</small>{% endif %}
+            {% if cfg.unknown_button %}<button type="button" class="linkbtn" data-set="{{ name }}=0">Kolesterol tidak diketahui</button>{% endif %}
+          {% elif cfg.options|length <= 3 %}
+            <span class="lbl" id="lbl-{{ name }}">{{ cfg.label }}</span>
+            <div class="seg" role="radiogroup" aria-labelledby="lbl-{{ name }}" id="{{ name }}">
+              {% for val, text in cfg.options %}
+              <label><input type="radio" name="{{ name }}" value="{{ val }}" required {{ 'checked' if values.get(name) == val }}><span>{{ text }}</span></label>
+              {% endfor %}
+            </div>
+          {% else %}
+            <label for="{{ name }}">{{ cfg.label }}</label>
+            <select id="{{ name }}" name="{{ name }}" required>
+              <option value="" disabled {{ 'selected' if not values.get(name) }}>Pilih tipe nyeri dada</option>
+              {% for val, text in cfg.options %}
+              <option value="{{ val }}" {{ 'selected' if values.get(name) == val }}>{{ text }}</option>
+              {% endfor %}
+            </select>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+
+      {% if loop.last %}
+      <figure class="stpreview" aria-live="polite">
+        <svg viewBox="0 0 320 110" role="img" aria-labelledby="st-cap">
+          <path class="base" d="M0 60H320"/>
+          <path class="beat" id="beatPath" d=""/>
+          <path class="st" id="stPath" d=""/>
+        </svg>
+        <figcaption id="st-cap">Pilih kemiringan segmen ST untuk melihat ilustrasinya.</figcaption>
+      </figure>
+      {% endif %}
+    </fieldset>
+    {% endfor %}
+
+    <div class="actions">
+      <button class="btn primary" type="submit" id="submitBtn">Prediksi risiko</button>
+      <button class="btn quiet" type="button" id="resetBtn">Kosongkan isian</button>
+    </div>
+  </form>
+
+  <aside id="hasil" class="panel {{ ('pos' if result.pred == 1 else 'neg') if result }}" tabindex="-1" aria-live="polite" aria-label="Hasil prediksi">
+    {% if result %}
+    <div class="strip" aria-hidden="true">
+      <svg viewBox="0 0 360 74" preserveAspectRatio="none">
+        <path pathLength="1" d="M0 44 {% for i in range(3) %}{{ beat_st if result.pred == 1 else beat }} {% endfor %}h40"/>
+      </svg>
+    </div>
+    <div class="body">
+      <h2>{{ result.label }}</h2>
+      <div class="prob">
+        <span class="num">{{ result.p_disease_str }}</span><span class="pc">%</span>
+        <span class="cap">kemungkinan penyakit jantung menurut model</span>
+      </div>
+      <div class="meter" role="img" aria-label="Kemungkinan penyakit jantung {{ result.p_disease_str }} persen"><span style="width:{{ result.p_disease }}%"></span></div>
+      <p class="alt">Kemungkinan normal: {{ result.p_normal_str }}%</p>
+
+      <h3>Alur keputusan model</h3>
+      <p class="sub">Pohon menanyakan hal berikut berurutan sampai tiba di daun.</p>
+      <ol class="rail">
+        {% for s in result.steps %}
+        <li><strong>{{ s.text }}</strong>{% if s.note %}<em>{{ s.note }}</em>{% endif %}</li>
+        {% endfor %}
+        <li class="leaf"><strong>Prediksi: {{ 'penyakit jantung' if result.pred == 1 else 'normal' }}</strong>
+          <em>Pada data latih, {{ result.leaf_share_str }}% dari {{ result.leaf_n }} pasien dengan alur ini {{ result.leaf_class }}.</em></li>
+      </ol>
+      {% if result.low_support %}<p class="note">Alur ini hanya memuat {{ result.leaf_n }} pasien pada data latih, jadi probabilitasnya kurang stabil. Anggap hasilnya sebagai petunjuk awal.</p>{% endif %}
+      {% if result.imputed %}<p class="note">Nilai 0 pada {{ result.imputed|join(' dan ') }} dianggap tidak diketahui dan diisi median data latih.</p>{% endif %}
+      <p class="note">Hasil ini untuk pembelajaran dan bukan diagnosis. Diskusikan kondisi kesehatan dengan tenaga medis.</p>
+    </div>
+    {% else %}
+    <div class="strip" aria-hidden="true">
+      <svg viewBox="0 0 360 74" preserveAspectRatio="none"><path pathLength="1" stroke="#CFC3C6" style="stroke:#CFC3C6;animation:none;stroke-dashoffset:0" d="M0 44 h360"/></svg>
+    </div>
+    <div class="empty">
+      <h2>Hasil akan tampil di sini</h2>
+      <p>Lengkapi data di sebelah kiri, lalu tekan Prediksi risiko. Anda akan melihat:</p>
+      <ul>
+        <li>kemungkinan penyakit jantung dalam persen,</li>
+        <li>aturan jika-maka yang dilalui pohon keputusan,</li>
+        <li>jumlah pasien data latih yang punya alur sama.</li>
+      </ul>
+    </div>
+    {% endif %}
+  </aside>
+</main>
+
+<div class="wrap">
+  <section class="about">
+    <p>Model dilatih pada {{ info.pasien }} pasien dari Heart Failure Prediction Dataset (Soriano, 2021, Kaggle). Pada data uji, akurasinya {{ info.akurasi }} dengan AUC {{ info.auc }}. Pohonnya hanya {{ info.kedalaman }} lapis dengan {{ info.daun }} daun, sehingga setiap hasil bisa ditelusuri.</p>
+    <p>Dibuat untuk Praktikum Pembelajaran Mesin, Modul 05 Decision Tree. Bukan alat diagnosis medis.</p>
+  </section>
+</div>
+
+<script>
+(function () {
+  var form = document.getElementById('form');
+  var SAMPLES = {
+    risk:   {Age:54, Sex:'M', ChestPainType:'ASY', RestingBP:140, Cholesterol:0, FastingBS:'0', RestingECG:'Normal', MaxHR:110, ExerciseAngina:'Y', Oldpeak:'2,0', ST_Slope:'Flat'},
+    normal: {Age:40, Sex:'F', ChestPainType:'ATA', RestingBP:130, Cholesterol:200, FastingBS:'0', RestingECG:'Normal', MaxHR:172, ExerciseAngina:'N', Oldpeak:'0', ST_Slope:'Up'}
+  };
+
+  function setField(name, value) {
+    var radios = form.querySelectorAll('input[type=radio][name="' + name + '"]');
+    if (radios.length) {
+      radios.forEach(function (r) { r.checked = (r.value === String(value)); });
+    } else if (form.elements[name]) {
+      form.elements[name].value = value;
+    }
+  }
+  function fill(sample) {
+    Object.keys(sample).forEach(function (k) { setField(k, sample[k]); });
+    updatePreview();
+  }
+  document.querySelectorAll('[data-sample]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      fill(SAMPLES[b.dataset.sample]);
+      document.getElementById('form').scrollIntoView({block: 'start'});
+    });
+  });
+  document.querySelectorAll('[data-set]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var kv = b.dataset.set.split('=');
+      setField(kv[0], kv[1]);
+      form.elements[kv[0]].focus();
+    });
+  });
+  document.getElementById('resetBtn').addEventListener('click', function () {
+    Array.prototype.forEach.call(form.elements, function (el) {
+      if (el.type === 'radio') el.checked = false;
+      else if (el.tagName === 'SELECT') el.selectedIndex = 0;
+      else if (el.type === 'number' || el.type === 'text') el.value = '';
+    });
+    updatePreview();
+  });
+
+  /* Pratinjau segmen ST: ilustrasi, bukan pengukuran */
+  var NAMES = {Up: 'naik', Flat: 'datar', Down: 'turun'};
+  function updatePreview() {
+    var slope = (form.querySelector('input[name=ST_Slope]:checked') || {}).value;
+    var op = parseFloat(String(form.elements.Oldpeak.value).replace(',', '.'));
+    var cap = document.getElementById('st-cap');
+    var beat = document.getElementById('beatPath'), st = document.getElementById('stPath');
+    var base = 60;
+    if (isNaN(op)) op = 0;
+    var depth = Math.max(-1, Math.min(4, op)) * 7;           // piksel di bawah garis dasar
+    var jy = base + depth;                                    // titik J
+    var delta = slope === 'Up' ? -16 : slope === 'Down' ? 16 : 0;
+    var ey = Math.max(12, Math.min(104, jy + delta));         // akhir segmen ST
+    var tTop = ey - 22;
+    function f(n) { return Math.round(n * 10) / 10; }
+    var d = 'M0 ' + base + ' H34 Q42 ' + (base - 12) + ' 50 ' + base +
+            ' H72 L76 ' + (base + 5) + ' L82 ' + (base - 42) + ' L88 ' + (base + 12) +
+            ' L94 ' + f(jy) + ' L150 ' + f(ey) +
+            ' Q168 ' + f(tTop) + ' 186 ' + f(ey) + ' L196 ' + base + ' H320';
+    beat.setAttribute('d', d);
+    st.setAttribute('d', slope ? 'M94 ' + f(jy) + ' L150 ' + f(ey) : '');
+    if (!slope) {
+      cap.textContent = 'Pilih kemiringan segmen ST untuk melihat ilustrasinya.';
+    } else {
+      var ket = op > 0 ? 'depresi ' + String(Math.round(op * 10) / 10).replace('.', ',') : op < 0 ? 'elevasi' : 'tanpa depresi';
+      cap.textContent = 'Ilustrasi: segmen ST ' + NAMES[slope] + ', ' + ket + ' (garis merah). Bentuk ini hanya gambaran, bukan hasil pengukuran.';
+    }
+  }
+  form.addEventListener('input', updatePreview);
+  form.addEventListener('change', updatePreview);
+  updatePreview();
+
+  form.addEventListener('submit', function () {
+    var b = document.getElementById('submitBtn');
+    setTimeout(function () { b.disabled = true; b.textContent = 'Menghitung...'; }, 0);
+  });
+
+  /* Setelah hasil muncul, bawa pengguna ke panel hasil (penting di layar sempit) */
+  var panel = document.getElementById('hasil');
+  if (panel.classList.contains('pos') || panel.classList.contains('neg')) {
+    var narrow = window.matchMedia('(max-width: 920px)').matches;
+    if (narrow) panel.scrollIntoView({block: 'start'});
+    panel.focus({preventScroll: true});
+  }
+})();
+</script>
+</body>
+</html>
