@@ -39,25 +39,3 @@ python app.py                   # buka http://127.0.0.1:5000
 ```
 Versi paket di `requirements.txt` sengaja dikunci sama dengan yang dipakai saat model disimpan.
 Jangan ubah versi `scikit-learn`, karena file `.joblib` hanya dijamin dapat dimuat pada versi yang sama.
-
-## Mengunggah ke GitHub
-1. Buat repositori kosong di https://github.com/new (mis. `ta05-decision-tree-heart`).
-2. Di folder proyek ini:
-```bash
-git init
-git add .
-git commit -m "TA-05: CardioTree, Decision Tree klasifikasi penyakit jantung"
-git branch -M main
-git remote add origin https://github.com/USERNAME/ta05-decision-tree-heart.git
-git push -u origin main
-```
-
-## Deploy ke Vercel
-1. Login ke https://vercel.com dengan akun GitHub, lalu **Add New > Project** dan impor repositori di atas.
-2. Vercel mengenali Flask otomatis dari `app.py` dan `requirements.txt`, jadi build command tidak perlu diisi.
-   Versi Python dibaca dari `.python-version` (3.13).
-3. Klik **Deploy**. Setelah selesai, URL aplikasi (`https://nama-proyek.vercel.app`) muncul di dashboard.
-4. `.vercelignore` mengecualikan `figures/`, `data/`, dan notebook dari paket deployment karena tidak dipakai saat runtime.
-   Jika build gagal dengan pesan ukuran function melebihi batas, cek log build dan kurangi berkas yang ikut terunggah.
-5. Setelah deploy, buka halaman utama dan coba tombol **Coba contoh berisiko**. Jika muncul `TemplateNotFound`
-   atau model gagal dimuat, periksa log function di dashboard Vercel.
